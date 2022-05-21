@@ -26,6 +26,23 @@ services:
     networks:
       - elk
 
+  setup2:
+    build:
+      context: setup2/
+      args:
+        ELASTIC_VERSION: ${ELASTIC_VERSION}
+    init: true
+    volumes:
+      - setup2:/state:Z
+      # (!) CA certificate. Generate using instructions from tls/README.md
+      - ./tls/kibana/elasticsearch-ca2.pem:/elasticsearch-ca.pem:ro,z
+    environment:
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:-}
+      LOGSTASH_INTERNAL_PASSWORD: ${LOGSTASH_INTERNAL_PASSWORD:-}
+      KIBANA_SYSTEM_PASSWORD: ${KIBANA_SYSTEM_PASSWORD:-}
+    networks:
+      - elk
+
   elasticsearch:
     build:
       context: elasticsearch/
@@ -40,6 +57,32 @@ services:
     ports:
       - "9200:9200"
       - "9300:9300"
+    environment:
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      # Bootstrap password.
+      # Used to initialize the keystore during the initial startup of
+      # Elasticsearch. Ignored on subsequent runs.
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:-}
+      # Use single node discovery in order to disable production mode and avoid bootstrap checks.
+      # see: https://www.elastic.co/guide/en/elasticsearch/reference/current/bootstrap-checks.html
+      discovery.type: single-node
+    networks:
+      - elk
+
+  elasticsearch2:
+    build:
+      context: elasticsearch/
+      args:
+        ELASTIC_VERSION: ${ELASTIC_VERSION}
+    volumes:
+      - ./elasticsearch/config/elasticsearch2.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro,z
+      - elasticsearch2:/usr/share/elasticsearch/data:z
+      # (!) TLS certificates. Generate using instructions from tls/README.md.
+      - ./tls/elasticsearch/elasticsearch2.p12:/usr/share/elasticsearch/config/elasticsearch.p12:ro,z
+      - ./tls/elasticsearch/http2.p12:/usr/share/elasticsearch/config/http.p12:ro,z
+    ports:
+      - "9201:9200"
+      - "9301:9300"
     environment:
       ES_JAVA_OPTS: -Xms512m -Xmx512m
       # Bootstrap password.
@@ -93,6 +136,24 @@ services:
     depends_on:
       - elasticsearch
 
+  kibana2:
+    build:
+      context: kibana/
+      args:
+        ELASTIC_VERSION: ${ELASTIC_VERSION}
+    volumes:
+      - ./kibana/config/kibana2.yml:/usr/share/kibana/config/kibana.yml:ro,Z
+      # (!) CA certificate. Generate using instructions from tls/README.md.
+      - ./tls/kibana/elasticsearch-ca2.pem:/usr/share/kibana/config/elasticsearch-ca.pem:ro,z
+    ports:
+      - "5602:5601"
+    environment:
+      KIBANA_SYSTEM_PASSWORD: ${KIBANA_SYSTEM_PASSWORD:-}
+    networks:
+      - elk
+    depends_on:
+      - elasticsearch2
+
 networks:
   elk:
     driver: bridge
@@ -100,3 +161,5 @@ networks:
 volumes:
   setup:
   elasticsearch:
+  setup2:
+  elasticsearch2:
